@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Link Manager</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <script src="config.js"></script>
+    <style>
+        .link-item.hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body style="display: flex; flex-direction: column; min-height: 100vh;">
+    <header class="d-flex justify-content-between align-items-center mb-4 p-3"
+        style="background-color: #343a40; color: #f8f9fa; position: fixed; top: 0; width: 100%; z-index: 1000;">
+        <input type="text" id="search" class="form-control w-50" placeholder="Search links..."
+            style="background-color: #495057; color: #f8f9fa;">
+        <button class="btn btn-primary" data-toggle="modal" data-target="#addLinkModal">Adicionar Dashboard</button>
+    </header>
+    <div class="container mt-5" style="margin-top: 100px;"></div>
+
+    <div class="container mt-5">
+        <ul class="nav nav-tabs" id="categoryTabs" role="tablist">
+            <!-- Category tabs will be dynamically added here -->
+        </ul>
+        <div class="tab-content" id="categoryTabContent">
+            <!-- Category tab contents will be dynamically added here -->
+        </div>
+
+        <!-- Add Link Modal -->
+        <div class="modal fade" id="addLinkModal" tabindex="-1" aria-labelledby="addLinkModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="addLinkModalLabel">Add New Link</h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="addLinkForm">
+                            <div class="form-group">
+                                <label for="linkName">Link Name</label>
+                                <input type="text" class="form-control" id="linkName" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="linkUrl">Link URL</label>
+                                <input type="url" class="form-control" id="linkUrl" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="linkCategory">Category</label>
+                                <input type="text" class="form-control" id="linkCategory" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Add Link</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="text-center mt-auto p-3" style="background-color: #343a40; color: #f1f1f1;">
+        <p>&copy; 2024 Site feito por Rafael Russo Soares</p>
+    </footer>
+</body>
+<script>
+    let links = [];
+
+    async function loadLinks() {
+        try {
+            const response = await fetch(CONFIG.JSONBIN_FILE_PATH, {
+                method: 'GET',
+                headers: {
+                    'X-Master-Key': CONFIG.JSONBIN_API_KEY
+                }
+            });
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            const data = await response.json();
+            links = data.record.links || [];
+            updateCategories();
+        } catch (error) {
+            console.error('Error loading links:', error);
+        }
+    }
+
+    async function saveLinks() {
+        try {
+            const response = await fetch(CONFIG.JSONBIN_FILE_PATH, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Master-Key': CONFIG.JSONBIN_API_KEY,
+                },
+                body: JSON.stringify({ links })
+            });
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+        } catch (error) {
+            console.error('Error saving links:', error);
+        }
+    }
+
+    $(document).ready(function () {
+        loadLinks();
+
+        $('#addLinkForm').on('submit', async function (event) {
+            event.preventDefault();
+            const name = $('#linkName').val();
+            const url = $('#linkUrl').val();
+            const category = $('#linkCategory').val();
+
+            links.push({ name, url, category });
+            updateCategories();
+            await saveLinks();
+            $('#addLinkModal').modal('hide');
+            this.reset();
+        });
+
+        $('#search').on('input', function () {
+            const query = $(this).val().toLowerCase();
+            filterLinks(query);
+        });
+
+        $('#categoryTabs').on('click', 'a', function (e) {
+            e.preventDefault();
+            $(this).tab('show');
+            const target = $(this).attr('href');
+            $('.tab-pane').removeClass('active show');
+            $(target).addClass('active show');
+        });
+    });
+
+    function filterLinks(query) {
+        $('.tab-pane').each(function () {
+            const links = $(this).find('.link-item');
+            let hasVisibleLinks = false;
+            links.each(function () {
+                const name = $(this).text().toLowerCase();
+                const isVisible = name.includes(query);
+                $(this).toggleClass('hidden', !isVisible);
+                if (isVisible) {
+                    hasVisibleLinks = true;
+                }
+            });
+            $(this).toggle(hasVisibleLinks);
+        });
+
+        // Ensure the first visible tab is shown
+        const firstVisibleTab = $('#categoryTabs .nav-link:not(.hidden)').first();
+        if (firstVisibleTab.length) {
+            firstVisibleTab.tab('show');
+        }
+    }
+
+    function updateCategories() {
+        const categories = [...new Set(links.map(link => link.category))];
+        $('#categoryTabs').empty();
+        $('#categoryTabContent').empty();
+
+        categories.forEach((category, index) => {
+            const sanitizedCategory = category.replace(/\s+/g, '-').toLowerCase();
+            const isActive = index === 0 ? 'active' : '';
+            console.log(`Creating tab for category: ${category}, sanitized: ${sanitizedCategory}`);
+            $('#categoryTabs').append(`
+                <li class="nav-item">
+                    <a class="nav-link ${isActive}" id="tab-${sanitizedCategory}" data-toggle="tab" href="#content-${sanitizedCategory}" role="tab" aria-controls="content-${sanitizedCategory}" aria-selected="${isActive}">${category}</a>
+                </li>
+            `);
+
+            const categoryLinks = links.filter(link => link.category === category);
+            const linksHtml = categoryLinks.map(link => `<button class="d-block link-item btn btn-link" onclick="window.open('${link.url}', '_blank')">${link.name}</button>`).join('');
+
+            $('#categoryTabContent').append(`
+                <div class="tab-pane fade ${isActive}" id="content-${sanitizedCategory}" role="tabpanel" aria-labelledby="tab-${sanitizedCategory}">
+                    ${linksHtml}
+                </div>
+            `);
+        });
+
+        // Ensure the first tab is shown by default
+        $('#categoryTabs a:first').tab('show');
+        $('#categoryTabContent .tab-pane:first').addClass('show active');
+    }
+</script>
+</html>
